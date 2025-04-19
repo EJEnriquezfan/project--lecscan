@@ -1,39 +1,36 @@
 import re
 import json
 import pytesseract
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 from PIL import Image
-from kivy.app import App, Widget
+from kivy.app import App
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.filechooser import FileChooserIconView
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.popup import Popup
 from kivy.core.window import Window
-from kivy.uix.image import Image
+from kivy.uix.image import Image as KivyImage
 from kivy.uix.textinput import TextInput
 from kivy.uix.screenmanager import ScreenManager, Screen
+
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+Window.clearcolor = (1, 1, 1, 1)
 
 
 class lecscan(App):
     def build(self):
         self.title = "Lecture Scanner"
+        Window.size = (360, 640)
 
-        layout = BoxLayout(orientation='vertical')
-        return layout
-    
+        # Create the ScreenManager
+        sm = ScreenManager()
+        sm.add_widget(MainScreen(name="main"))
+        sm.add_widget(CreateAccountScreen(name="create_account"))
+        sm.add_widget(Scanner(name="scanner"))
 
-    def open_file_chooser(self, instance):
-        filechooser = FileChooserIconView()
-        filechooser.bind(on_submit=self.process_image)
-        popup = Popup(title="Select Image", content=filechooser, size_hint=(0.9, 0.9))
-        popup.open()
+        return sm
 
-    def process_image(self, instance, selection, touch):
-        if selection:
-            image_path = selection[0]
-            self.label_output.text = "Processing..."
-            self.scan_image(image_path)
 
 class CreateAccountScreen(Screen):
     def __init__(self, **kwargs):
@@ -49,6 +46,10 @@ class CreateAccountScreen(Screen):
         layout.add_widget(self.username_input)
         layout.add_widget(self.email_input)
         layout.add_widget(self.password_input)
+
+        # Add an error label
+        self.error_label = Label(text="", color=[1, 0, 0, 1], size_hint=(1, 0.1))  # Red text for errors
+        layout.add_widget(self.error_label)
 
         # Add a button to submit the form
         btn_submit = Button(text="Submit", size_hint=(1, 0.1), background_color=[0.2, 0.8, 0.2, 1])
@@ -67,7 +68,11 @@ class CreateAccountScreen(Screen):
         email = self.email_input.text
         password = self.password_input.text
 
-        # Handle account creation logic here
+        if not is_valid_email(email):
+            self.error_label.text = "Invalid email address. Please try again."
+            return
+
+        save_user_data(username, email, password)
         print(f"Account created for {username} with email {email}")
 
     def go_back(self, instance):
@@ -79,51 +84,78 @@ class MainScreen(Screen):
         super().__init__(**kwargs)
         layout = BoxLayout(orientation='vertical', padding=20, spacing=20)
 
-        logo = Image(source="lecscanlogo1.jpg")
+        logo = KivyImage(source="lecscanlogo1.jpg")
         layout.add_widget(logo)
 
         # Add a welcome label
-        layout.add_widget(Label(text="Welcome to Lecture Scanner", size_hint=(1, 0.1)))
+        layout.add_widget(Label(text="Welcome to Lecture Scanner", size_hint=(1, 0.1), color=[0, 0, 0, 1]))
 
         # Add a button to go to the Create Account screen
         btn_create_account = Button(text="Create Account", size_hint=(1, 0.1), background_color=[0.2, 0.8, 0.2, 1])
         btn_create_account.bind(on_press=self.go_to_create_account)
         layout.add_widget(btn_create_account)
 
+        # Add a button to go to the Scanner screen
+        btn_developer_mode = Button(text="Developer Mode", size_hint=(1, 0.1), background_color=[0, 0, 0, 0], color=[0, 0, 1, 1])
+        btn_developer_mode.bind(on_press=self.go_to_scanner)
+        layout.add_widget(btn_developer_mode)
+
         self.add_widget(layout)
 
     def go_to_create_account(self, instance):
         self.manager.current = "create_account"
 
+    def go_to_scanner(self, instance):
+        self.manager.current = "scanner"
 
-class lecscan(App):
-    def build(self):
-        self.title = "Lecture Scanner"
-        Window.size = (360, 640)
 
-        # Create the ScreenManager
-        sm = ScreenManager()
-        sm.add_widget(MainScreen(name="main"))
-        sm.add_widget(CreateAccountScreen(name="create_account"))
+class Scanner(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical', padding=20, spacing=20)
 
-        return sm
+        self.label_output = Label(text="Select an image to scan", size_hint=(1, 0.1))
+        layout.add_widget(self.label_output)
+
+        # Add a button to open the file chooser
+        btn_choose_file = Button(text="Choose Image", size_hint=(1, 0.1), background_color=[0.2, 0.8, 0.2, 1])
+        btn_choose_file.bind(on_press=self.open_file_chooser)
+        layout.add_widget(btn_choose_file)
+        
+        btn_back = Button(text="Back", size_hint=(1, 0.1), background_color=[0.8, 0.2, 0.2, 1])  # Red background
+        btn_back.bind(on_press=self.go_back)
+        layout.add_widget(btn_back)
+
+        self.add_widget(layout)
+
+    def open_file_chooser(self, instance):
+        popup = Popup(title="Choose an Image", size_hint=(0.9, 0.9))
+        filechooser = FileChooserIconView()
+        filechooser.bind(on_submit=self.file_selected)
+        popup.content = filechooser
+        popup.open()
+
+    def file_selected(self, instance, selection):
+        if selection:
+            self.scan_image(selection[0])
+
+    def scan_image(self, image_path):
+        try:
+            img = Image.open(image_path)
+            text = pytesseract.image_to_string(img)
+            self.label_output.text = text
+        except Exception as e:
+            self.label_output.text = f"Error: {e}"
+ 
+    def go_back(self, instance):
+            # Navigate back to the main screen
+            self.manager.current = "main"
+
 
 def save_user_data(username, email, password):
     user_data = {"username": username, "email": email, "password": password}
     with open("users.json", "a") as file:
         file.write(json.dumps(user_data) + "\n")
-
-def submit_account(self, instance):
-    username = self.username_input.text
-    email = self.email_input.text
-    password = self.password_input.text
-
-    if not is_valid_email(email):
-        self.error_label.text = "Invalid email address. Please try again."
-        return
-
-    save_user_data(username, email, password)
-    print(f"Account created for {username} with email {email}")
 
 
 def is_valid_email(email):
@@ -133,9 +165,6 @@ def is_valid_email(email):
 
 
 if __name__ == '__main__':
-
-    Window.size = (360, 640)
-
     try:
         lecscan().run()
     except Exception as e:
