@@ -4,6 +4,7 @@ import pytesseract
 from PIL import Image
 from kivy.app import App
 from kivy.uix.button import Button
+from kivy.uix.camera import Camera
 from kivy.uix.label import Label
 from kivy.uix.filechooser import FileChooserIconView
 from kivy.uix.boxlayout import BoxLayout
@@ -12,7 +13,9 @@ from kivy.core.window import Window
 from kivy.uix.image import Image as KivyImage
 from kivy.uix.textinput import TextInput
 from kivy.uix.screenmanager import ScreenManager, Screen
-
+import platform
+if platform.system() == 'Android':
+    from android.permissions import request_permissions, Permission
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 Window.clearcolor = (1, 1, 1, 1)
@@ -114,6 +117,19 @@ class Scanner(Screen):
         super().__init__(**kwargs)
         layout = BoxLayout(orientation='vertical', padding=20, spacing=20)
 
+        try:
+            # Add a Camera widget
+            self.camera = Camera(play=True, resolution=(640, 480), size_hint=(1, 0.8))
+            layout.add_widget(self.camera)
+        except Exception as e:
+            layout.add_widget(Label(text=f"Camera not available: {e}", size_hint=(1, 0.8)))
+
+        # Add a button to capture the image
+        btn_capture = Button(text="Capture", size_hint=(1, 0.1), background_color=[0.2, 0.8, 0.2, 1])
+        btn_capture.bind(on_press=self.capture_image)
+        layout.add_widget(btn_capture)
+
+        # Add a label to display the OCR result
         self.label_output = Label(text="Select an image to scan", size_hint=(1, 0.1))
         layout.add_widget(self.label_output)
 
@@ -121,19 +137,23 @@ class Scanner(Screen):
         btn_choose_file = Button(text="Choose Image", size_hint=(1, 0.1), background_color=[0.2, 0.8, 0.2, 1])
         btn_choose_file.bind(on_press=self.open_file_chooser)
         layout.add_widget(btn_choose_file)
-        
-        btn_back = Button(text="Back", size_hint=(1, 0.1), background_color=[0.8, 0.2, 0.2, 1])  # Red background
+
+        # Add a back button to return to the main screen
+        btn_back = Button(text="Back", size_hint=(1, 0.1), background_color=[0.8, 0.2, 0.2, 1])
         btn_back.bind(on_press=self.go_back)
         layout.add_widget(btn_back)
 
         self.add_widget(layout)
 
     def open_file_chooser(self, instance):
-        popup = Popup(title="Choose an Image", size_hint=(0.9, 0.9))
-        filechooser = FileChooserIconView()
-        filechooser.bind(on_submit=self.file_selected)
-        popup.content = filechooser
-        popup.open()
+        try:
+            popup = Popup(title="Choose an Image", size_hint=(0.9, 0.9))
+            filechooser = FileChooserIconView()
+            filechooser.bind(on_submit=self.file_selected)
+            popup.content = filechooser
+            popup.open()
+        except Exception as e:
+            self.label_output.text = f"Error: {e}"
 
     def file_selected(self, instance, selection):
         if selection:
@@ -143,6 +163,21 @@ class Scanner(Screen):
         try:
             img = Image.open(image_path)
             text = pytesseract.image_to_string(img)
+            self.label_output.text = text
+        except Exception as e:
+            self.label_output.text = f"Error: {e}"
+
+    def capture_image(self, instance):
+        try:
+            # Save the current frame from the camera
+            image_path = "captured_image.jpg"
+            self.camera.export_to_png(image_path)
+
+            # Process the image with Tesseract OCR
+            img = Image.open(image_path)
+            text = pytesseract.image_to_string(img)
+
+            # Display the extracted text
             self.label_output.text = text
         except Exception as e:
             self.label_output.text = f"Error: {e}"
